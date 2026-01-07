@@ -1,0 +1,39 @@
+# CMake build directory
+build/
+
+# CMake install directory
+install/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Compiled object files
+*.o
+*.obj
+
+# IDE files
+.vscode/
+.idea/
+*.sln
+*.vcxproj
+*.xcodeproj
+
+# Miscellaneous
+*.log
+*.swp
+
+build*/
+*.bak
+
+dependency/
+
+*.ipynb

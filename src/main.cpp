@@ -1,0 +1,129 @@
+#include <torch/torch.h>
+#include <iostream>
+#include "dcp.h"
+#include "loss.h"
+
+std::tuple<float, float> train_one_epoch(DCP& net,
+                                         torch::data::DataLoader<ModelNet40Dataset>& loader,
+                                         torch::optim::Optimizer& opt,
+                                         bool use_cycle) {
+    net->train();
+    float total_loss = 0;
+    size_t total_samples = 0;
+
+    for (auto& batch : loader) {
+        auto src = batch.data_src.to(torch::kCUDA);
+        auto tgt = batch.data_tgt.to(torch::kCUDA);
+        auto rot_ab = batch.rot_ab.to(torch::kCUDA);
+        auto trans_ab = batch.trans_ab.to(torch::kCUDA);
+
+        opt.zero_grad();
+
+        auto [rot_pred, trans_pred] = net->forward(src, tgt);
+
+        // Identity loss
+        auto batch_size = src.size(0);
+        auto identity = torch::eye(3).to(torch::kCUDA).unsqueeze(0).repeat({batch_size,1,1});
+        auto loss = torch::mse_loss(rot_pred.transpose(1,2).matmul(rot_ab), identity)
+                    + torch::mse_loss(trans_pred, trans_ab);
+
+        if(use_cycle) {
+            // cycle consistency
+            auto rot_ba_pred = batch.rot_ba.to(torch::kCUDA);
+            auto trans_ba_pred = batch.trans_ba.to(torch::kCUDA);
+            auto rot_loss = torch::mse_loss(rot_ba_pred.matmul(rot_pred), identity.clone());
+            auto trans_loss = torch::mean((rot_ba_pred.transpose(1,2).matmul(trans_pred.view({batch_size,3,1})).view({batch_size,3}) + trans_ba_pred).pow(2));
+            loss = loss + 0.1 * (rot_loss + trans_loss);
+        }
+
+        loss.backward();
+        opt.step();
+
+        total_loss += loss.item<float>() * batch_size;
+        total_samples += batch_size;
+    }
+
+    return { total_loss / total_samples, static_cast<float>(total_samples) };
+}
+
+std::tuple<float,float> test_one_epoch(DCP& net,
+                                       torch::data::DataLoader<ModelNet40Dataset>& loader,
+                                       bool use_cycle) {
+    net->eval();
+    float total_loss = 0;
+    size_t total_samples = 0;
+
+    for (auto& batch : loader) {
+        auto src = batch.data_src.to(torch::kCUDA);
+        auto tgt = batch.data_tgt.to(torch::kCUDA);
+        auto rot_ab = batch.rot_ab.to(torch::kCUDA);
+        auto trans_ab = batch.trans_ab.to(torch::kCUDA);
+
+        auto batch_size = src.size(0);
+
+        auto [rot_pred, trans_pred] = net->forward(src, tgt);
+
+        auto identity = torch::eye(3).to(torch::kCUDA).unsqueeze(0).repeat({batch_size,1,1});
+        auto loss = torch::mse_loss(rot_pred.transpose(1,2).matmul(rot_ab), identity)
+                    + torch::mse_loss(trans_pred, trans_ab);
+
+        if(use_cycle) {
+            auto rot_ba_pred = batch.rot_ba.to(torch::kCUDA);
+            auto trans_ba_pred = batch.trans_ba.to(torch::kCUDA);
+            auto rot_loss = torch::mse_loss(rot_ba_pred.matmul(rot_pred), identity.clone());
+            auto trans_loss = torch::mean((rot_ba_pred.transpose(1,2).matmul(trans_pred.view({batch_size,3,1})).view({batch_size,3}) + trans_ba_pred).pow(2));
+            loss = loss + 0.1 * (rot_loss + trans_loss);
+        }
+
+        total_loss += loss.item<float>() * batch_size;
+        total_samples += batch_size;
+    }
+
+    return { total_loss / total_samples, static_cast<float>(total_samples) };
+}
+
+
+int main() {
+    int batch_size = 32;
+    int embedding_dims = 512;
+    int layers = 6;
+    int n_heads = 4;
+    int ff_dims = 1024;
+    double dropout = 0.0;
+    float lr = 0.001;
+    int epochs = 250;
+
+    torch::Device device(torch::kCUDA);
+    DCP model(embedding_dims, layers, n_heads, ff_dims, dropout);
+    model->to(device);
+
+    auto train_dataset = ModelNet40Dataset("train").map(torch::data::transforms::Stack<>());
+    auto train_loader = torch::data::make_data_loader(std::move(train_dataset), batch_size);
+
+    auto test_dataset = ModelNet40Dataset("test").map(torch::data::transforms::Stack<>());
+    auto test_loader = torch::data::make_data_loader(std::move(test_dataset), batch_size);
+
+    torch::optim::Adam optimizer(
+        model->parameters(),
+        torch::optim::AdamOptions(1e-4)
+    );
+
+    for (int epoch = 0; epoch < epochs; ++epoch)
+    {
+        // optimizer.zero_grad();
+
+        // auto src = torch::rand({1,1024,3}).to(torch::kCUDA);
+        // auto tgt = torch::rand({1,1024,3}).to(torch::kCUDA);
+
+        // auto [R, t] = model->forward(src, tgt);
+
+        // auto loss = torch::norm(R) + torch::norm(t);
+        // loss.backward();
+        // optimizer.step();
+
+        auto [train_loss, _] = train_one_epoch(net, *train_loader, *opt, use_cycle);
+        auto [test_loss, __] = test_one_epoch(net, *test_loader, use_cycle);
+
+        std::cout << "Epoch " << epoch << " loss " << loss.item<float>() << std::endl;
+    }
+}

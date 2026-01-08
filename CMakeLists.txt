@@ -14,17 +14,17 @@ find_package(Torch REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 add_executable(dcp
-    src/main.cpp
-    src/dcp.cpp
-    src/dgcnn.cpp
-    src/transformer.cpp
-    src/multihead_attention.cpp
-    src/position_ffd.cpp
-    src/svd_head.cpp
-    src/loss.cpp
+     deep_learning/src/main.cpp
+     deep_learning/src/dcp.cpp
+     deep_learning/src/dgcnn.cpp
+     deep_learning/src/transformer.cpp
+     deep_learning/src/multihead_attention.cpp
+     deep_learning/src/position_ffd.cpp
+     deep_learning/src/svd_head.cpp
+     deep_learning/src/loss.cpp
 )
 
-list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
+list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/deep_learning/include)
 include_directories(${INCLUDE_DIRS})
 
 target_link_libraries(dcp ${TORCH_LIBRARIES})

@@ -29,7 +29,7 @@ torch::Tensor index_points(torch::Tensor points, torch::Tensor idx)
 
     torch::Tensor idx_exp = idx.unsqueeze(1).expand({B, C, N, k});
 
-    torch::Tensor points_exp = points.unsqueeze(2).expand({B, C, N, N});
+    torch::Tensor points_exp = points.unsqueeze(-1).expand({B, C, N, N});
 
     torch::Tensor neighbors = points_exp.gather(3, idx_exp);
     return neighbors;
@@ -38,15 +38,15 @@ torch::Tensor index_points(torch::Tensor points, torch::Tensor idx)
 torch::Tensor get_graph_feature(torch::Tensor x, int64_t k = 20)
 {
     int64_t B = x.size(0);
-    int64_t N = x.size(1);
-    int64_t C = x.size(2);
+    int64_t C = x.size(1);
+    int64_t N = x.size(2);
 
     if (k > N) k = N;
 
-    torch::Tensor idx = knn(x.transpose(1,2), k);
-    torch::Tensor neighbors = index_points(x.transpose(1,2), idx);
+    torch::Tensor idx = knn(x, k);
+    torch::Tensor neighbors = index_points(x, idx);
 
-    torch::Tensor x_expanded = x.transpose(1,2).unsqueeze(-1).repeat({1, 1, 1, k});
+    torch::Tensor x_expanded = x.unsqueeze(-1).expand({B, C, N, k});
 
     torch::Tensor edge_feature = torch::cat({neighbors - x_expanded, x_expanded}, 1);
     return edge_feature;

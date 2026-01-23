@@ -14,8 +14,8 @@ struct EncoderLayerImpl : torch::nn::Module
 
     EncoderLayerImpl(MultiHeadAttention attn_module, PositionwiseFeedForward ff_module): self_attn(std::move(attn_module)), ff(std::move(ff_module))
     {
-        register_module("self_attn", self_attn);
-        register_module("ff", ff);
+        register_module("selt_attn", self_attn);
+        register_module("feed_forward", ff);
     }
 
     torch::Tensor forward(torch::Tensor x)
@@ -33,11 +33,13 @@ struct EncoderImpl : torch::nn::Module
 
     EncoderImpl(int64_t d_model, int64_t num_layers, int64_t n_heads, int64_t d_ff, double dropout)
     {
+        register_module("layers", layers);
+        
         for(int64_t i = 0; i < num_layers; i++)
         {
             MultiHeadAttention attn = MultiHeadAttention(n_heads, d_model);
             PositionwiseFeedForward ff_module = PositionwiseFeedForward(d_model, d_ff, dropout);
-            layers->push_back(register_module("layer" + std::to_string(i), EncoderLayer(attn, ff_module)));
+            layers->push_back(EncoderLayer(attn, ff_module));
         }
     }
 

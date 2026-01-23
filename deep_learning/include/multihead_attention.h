@@ -11,7 +11,7 @@ struct MultiHeadAttentionImpl : torch::nn::Module {
     int64_t n_heads;
     int64_t d_model;
     int64_t d_k;
-    torch::nn::Linear w_q{nullptr}, w_k{nullptr}, w_v{nullptr}, w_o{nullptr};
+    torch::nn::ModuleList linears;
 
     MultiHeadAttentionImpl(int64_t heads, int64_t model_dim);
 

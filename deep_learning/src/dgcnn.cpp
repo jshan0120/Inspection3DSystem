@@ -32,7 +32,7 @@ torch::Tensor DGCNNImpl::forward(torch::Tensor x)
 
     torch::Tensor x_out = torch::relu(bn5(conv5(x_cat)));
     x_out = x_out.squeeze(-1);
-    x_out = x_out.transpose(1, 2); 
+    // x_out = x_out.transpose(1, 2); 
 
     return x_out;
 }

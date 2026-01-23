@@ -42,23 +42,26 @@ EpochResult train_one_epoch(DCP& net,
 
         opt.zero_grad();
 
-        auto [rot_pred, trans_pred] = net->forward(src, tgt);
+        auto [rot_pred, trans_pred, rot_ba_pred, trans_ba_pred] = net->forward(src, tgt);
 
         auto batch_size = src.size(0);
         auto identity = torch::eye(3, src.options()).unsqueeze(0).expand({batch_size, 3, 3});
-        auto loss = torch::mse_loss(rot_pred.transpose(1, 2).matmul(rot_ab), identity)
-                    + torch::mse_loss(trans_pred, trans_ab);
+        auto loss = pose_loss(rot_pred, trans_pred, rot_ab, trans_ab, src);
 
         auto r_err = compute_rotation_error(rot_pred, rot_ab);
         auto t_err = torch::norm(trans_pred - trans_ab, 2, 1);
 
-        if(use_cycle) {
+        if (use_cycle) {
             auto rot_ba_gt = torch::stack(rot_ba_list).to(torch::kCUDA);
             auto trans_ba_gt = torch::stack(trans_ba_list).to(torch::kCUDA);
 
-            auto rot_loss = torch::mse_loss(rot_ba_gt.matmul(rot_pred), identity.clone());
-            auto trans_loss = torch::mean((rot_ba_gt.transpose(1,2).matmul(trans_pred.view({(long)batch_size, 3, 1})).view({(long)batch_size, 3}) + trans_ba_gt).pow(2));
-            loss = loss + 0.1 * (rot_loss + trans_loss);
+            auto rot_loss_ba = torch::mse_loss(rot_ba_pred, rot_ba_gt);
+            auto trans_loss_ba = torch::mse_loss(trans_ba_pred, trans_ba_gt);
+
+            auto identity = torch::eye(3, src.options()).unsqueeze(0).expand({batch_size, 3, 3});
+            auto cycle_rot_loss = torch::mse_loss(torch::matmul(rot_ba_pred, rot_pred), identity);
+
+            loss = loss + 0.1 * (rot_loss_ba + trans_loss_ba + cycle_rot_loss);
         }
 
         loss.backward();
@@ -103,22 +106,25 @@ EpochResult test_one_epoch(DCP& net,
 
         auto batch_size = src.size(0);
 
-        auto [rot_pred, trans_pred] = net->forward(src, tgt);
+        auto [rot_pred, trans_pred, rot_ba_pred, trans_ba_pred] = net->forward(src, tgt);
 
         auto identity = torch::eye(3, torch::device(torch::kCUDA).dtype(torch::kFloat32)).unsqueeze(0).repeat({(long)batch_size, 1, 1});
-        auto loss = torch::mse_loss(rot_pred.transpose(1, 2).matmul(rot_ab), identity)
-                    + torch::mse_loss(trans_pred, trans_ab);
+        auto loss = pose_loss(rot_pred, trans_pred, rot_ab, trans_ab, src);
 
         auto r_err = compute_rotation_error(rot_pred, rot_ab);
         auto t_err = torch::norm(trans_pred - trans_ab, 2, 1);
 
-        if(use_cycle) {
+        if (use_cycle) {
             auto rot_ba_gt = torch::stack(rot_ba_list).to(torch::kCUDA);
             auto trans_ba_gt = torch::stack(trans_ba_list).to(torch::kCUDA);
 
-            auto rot_loss = torch::mse_loss(rot_ba_gt.matmul(rot_pred), identity.clone());
-            auto trans_loss = torch::mean((rot_ba_gt.transpose(1,2).matmul(trans_pred.view({(long)batch_size, 3, 1})).view({(long)batch_size, 3}) + trans_ba_gt).pow(2));
-            loss = loss + 0.1 * (rot_loss + trans_loss);
+            auto rot_loss_ba = torch::mse_loss(rot_ba_pred, rot_ba_gt);
+            auto trans_loss_ba = torch::mse_loss(trans_ba_pred, trans_ba_gt);
+
+            auto identity = torch::eye(3, src.options()).unsqueeze(0).expand({batch_size, 3, 3});
+            auto cycle_rot_loss = torch::mse_loss(torch::matmul(rot_ba_pred, rot_pred), identity);
+
+            loss = loss + 0.1 * (rot_loss_ba + trans_loss_ba + cycle_rot_loss);
         }
 
         total_loss += loss.template item<float>() * batch_size;
@@ -212,7 +218,7 @@ int main() {
             }
         }
 
-        if (epoch % 10 == 0) {
+        if (epoch % 1 == 0) {
             model->eval();
             torch::NoGradGuard no_grad;
 

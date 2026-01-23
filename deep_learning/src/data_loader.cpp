@@ -44,6 +44,11 @@ void ModelNet40Dataset::load_data(const std::string& root)
 ModelNet40Example ModelNet40Dataset::get(size_t index) 
 {
     torch::NoGradGuard no_grad;
+
+    if (partition_ != "train") {
+        torch::manual_seed(index); 
+    }
+
     auto f32_options = torch::TensorOptions().dtype(torch::kFloat32);
 
     torch::Tensor pc = all_data[index].slice(0, 0, num_points_); 
@@ -67,18 +72,12 @@ ModelNet40Example ModelNet40Dataset::get(size_t index)
     torch::Tensor trans_ab = (torch::rand({3}, f32_options) - 0.5);
     torch::Tensor trans_ba = -rot_ba.mv(trans_ab);
 
-    torch::Tensor src = pc.t().contiguous(); // [3, 1024]
+    torch::Tensor src = pc.t().contiguous();
     torch::Tensor tgt = (rot_ab.mm(src) + trans_ab.view({3, 1})).contiguous();
 
     auto perm_src = torch::randperm(num_points_, torch::kLong);
     auto perm_tgt = torch::randperm(num_points_, torch::kLong);
 
-    src = src.index_select(1, perm_src);
-    tgt = tgt.index_select(1, perm_tgt);
-
-    // src = src.unsqueeze(-1); // [3, 1024, 1]
-    // tgt = tgt.unsqueeze(-1);
-    
     src = src.index_select(1, perm_src).to(torch::kFloat32).contiguous();
     tgt = tgt.index_select(1, perm_tgt).to(torch::kFloat32).contiguous();
 

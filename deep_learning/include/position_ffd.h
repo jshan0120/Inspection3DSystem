@@ -7,7 +7,8 @@
 
 struct PositionwiseFeedForwardImpl : torch::nn::Module
 {
-    torch::nn::Linear fc1{nullptr}, fc2{nullptr};
+    torch::nn::Linear w_1{nullptr}, w_2{nullptr};
+    torch::nn::Sequential norm{nullptr};
     double dropout;
 
     PositionwiseFeedForwardImpl(int64_t d_model, int64_t d_ff, double drop);

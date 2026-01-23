@@ -16,6 +16,8 @@ struct RegistrationResult {
 class DCPInference {
 public:
     DCPInference(const std::string& model_path);
+
+    Eigen::MatrixXf preprocess_eigen(const Eigen::MatrixXf& pc);
     
     RegistrationResult predict(const Eigen::MatrixXf& src_pc, const Eigen::MatrixXf& tgt_pc);
 

@@ -1,49 +1,49 @@
 #include "svd_head.h"
+#include <cmath>
 
-std::tuple<torch::Tensor, torch::Tensor> svd(torch::Tensor fx, torch::Tensor fy, torch::Tensor src, torch::Tensor tgt)
+SVDHeadImpl::SVDHeadImpl(int64_t emb_dims) {
+    torch::NoGradGuard no_grad;
+    reflect = register_parameter("reflect", torch::eye(3));
+    reflect[2][2] = -1.0;
+    reflect.set_requires_grad(false);
+}
+
+std::tuple<torch::Tensor, torch::Tensor> SVDHeadImpl::forward(
+    torch::Tensor src_embedding, torch::Tensor tgt_embedding, 
+    torch::Tensor src, torch::Tensor tgt) 
 {
-    torch::Tensor correspondence = torch::matmul(fx, fy.transpose(1, 2));
+    int64_t batch_size = src.size(0);
+    int64_t d_k = src_embedding.size(1);
 
-    correspondence = correspondence / std::sqrt((double)fx.size(-1));
+    torch::Tensor scores = torch::matmul(src_embedding.transpose(2, 1), tgt_embedding);
+    scores = scores / std::sqrt((double)d_k);
+    scores = torch::softmax(scores, 2);
 
-    torch::Tensor w = torch::softmax(correspondence, -1);
+    torch::Tensor src_corr = torch::matmul(tgt, scores.transpose(1, 2));
 
-    torch::Tensor src_mean = torch::mean(src, 2, true);
-    torch::Tensor tgt_mean = torch::mean(tgt, 2, true);
+    torch::Tensor src_mean = src.mean(2, true);
+    torch::Tensor src_corr_mean = src_corr.mean(2, true);
 
-    torch::Tensor X = src - src_mean;
-    torch::Tensor Y = tgt - tgt_mean;
+    torch::Tensor src_centered = src - src_mean;
+    torch::Tensor src_corr_centered = src_corr - src_corr_mean;
 
-    torch::Tensor H = torch::matmul(
-        X,
-        torch::matmul(w, Y.transpose(1, 2))
-    );
+    torch::Tensor H = torch::matmul(src_centered, src_corr_centered.transpose(2, 1));
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> svd = torch::linalg_svd(H);
-    torch::Tensor U = std::get<0>(svd);
-    torch::Tensor V = std::get<2>(svd).transpose(1, 2);;
+    std::vector<torch::Tensor> R_list;
+    for (int i = 0; i < batch_size; ++i) {
+        auto [u, s, vh] = torch::linalg_svd(H[i]);
+        torch::Tensor v = vh.transpose(-2, -1).conj();
+        
+        torch::Tensor r = torch::matmul(v, u.transpose(-2, -1));
 
-    torch::Tensor R = torch::matmul(V, U.transpose(1, 2));
+        if (torch::det(r).item<float>() < 0) {
+            r = torch::matmul(torch::matmul(v, reflect.to(v.device())), u.transpose(-2, -1));
+        }
+        R_list.push_back(r);
+    }
+    
+    torch::Tensor R = torch::stack(R_list, 0);
+    torch::Tensor t = torch::matmul(-R, src_mean) + src_corr_mean;
 
-    torch::Tensor detR = torch::det(R);
-    torch::Tensor mask = (detR < 0).to(R.dtype()).reshape({-1, 1, 1});
-
-    torch::Tensor V_fix = V.clone();
-    V_fix.index_put_(
-        {torch::indexing::Slice(), torch::indexing::Slice(), 2},
-        V_fix.index(
-            {torch::indexing::Slice(), torch::indexing::Slice(), 2}
-        ) * (1 - 2 * mask).reshape({-1, 1})
-    );
-
-    R = torch::matmul(V_fix, U.transpose(1, 2));
-
-    torch::Tensor t =
-        tgt_mean.squeeze(2)
-        - torch::matmul(
-              R,
-              src_mean
-          ).squeeze(2);
-
-    return std::make_tuple(R, t);
+    return std::make_tuple(R, t.squeeze(2));
 }

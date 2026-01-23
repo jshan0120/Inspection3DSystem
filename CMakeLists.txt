@@ -48,7 +48,7 @@ add_executable(inference
      inspection_system/src/dcp_inference.cpp
      inspection_system/src/core.cpp)
 
-target_link_libraries(inference ${TORCH_LIBRARIES} Eigen3::Eigen HighFive)
+target_link_libraries(inference ${TORCH_LIBRARIES} Eigen3::Eigen HighFive HDF5::HDF5)
 target_include_directories(inference PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/inspection_system/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deep_learning/include 

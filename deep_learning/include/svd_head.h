@@ -1,10 +1,16 @@
 #pragma once
-
-#ifndef SVD_H
-#define SVD_H
-
 #include <torch/torch.h>
 
-std::tuple<torch::Tensor, torch::Tensor> svd(torch::Tensor fx, torch::Tensor fy, torch::Tensor src, torch::Tensor tgt);
+struct SVDHeadImpl : torch::nn::Module {
+    SVDHeadImpl(int64_t emb_dims);
 
-#endif
+    std::tuple<torch::Tensor, torch::Tensor> forward(
+        torch::Tensor src_embedding, 
+        torch::Tensor tgt_embedding, 
+        torch::Tensor src, 
+        torch::Tensor tgt);
+
+    torch::Tensor reflect;
+};
+
+TORCH_MODULE(SVDHead);
